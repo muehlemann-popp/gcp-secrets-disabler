@@ -1,0 +1,17 @@
+# https://taskfile.dev
+
+version: "3"
+
+vars:
+  GITHUB_REPOSITORY_OWNER: muehlemann-popp
+  GITHUB_REPOSITORY_NAME: tempo-vacation-syncher
+  GCP_PROJECT_ID: tempo-vacation-syncher
+  GCP_SERVICE_ACCOUNT: github-ci@tempo-vacation-syncher.iam.gserviceaccount.com
+  GCP_IDENTITY_POOL_ID: github-identity-pool
+  GCP_DOCKER_IMAGE_NAME: europe-west6-docker.pkg.dev/tempo-vacation-syncher/tempo-vacation-syncher/build
+
+tasks:
+  default:
+    cmds:
+      - task --list-all
+    silent: true
