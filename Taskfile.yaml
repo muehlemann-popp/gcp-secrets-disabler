@@ -15,3 +15,38 @@ tasks:
     cmds:
       - task --list-all
     silent: true
+
+  uv:install:
+    desc: Install dependencies without changes in lock file
+    cmds:
+      - uv sync --frozen -v --all-groups
+
+  uv:install:ci:
+    desc: Install dependencies like in CI pipeline
+    cmds:
+      - uv sync --frozen -v --no-dev
+
+  uv:install:update:
+    desc: Update dependencies with 'uv'
+    cmds:
+      - uv sync --upgrade -v
+
+  gcloud:project:set:
+    desc: Set current project in gcloud context
+    cmds:
+      - gcloud config set project {{ .GCP_PROJECT_ID }}
+
+  gcloud:project:get:
+    desc: Get current project from gcloud context
+    cmds:
+      - gcloud config get project
+
+  py:format:
+    desc: Format python files
+    cmds:
+      - uv run ruff check --select I --fix
+      - uv run ruff format
+
+  py:run:
+    desc: Run main script with uv
+    cmd: uv run python ./main.py
