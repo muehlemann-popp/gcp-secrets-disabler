@@ -105,6 +105,66 @@ def get_secrets(
         return []
 
 
+def get_secrets_versions(
+    client: secretmanager.SecretManagerServiceClient, debug_mode: bool = False, save_data: bool = True
+) -> list[list]:
+    """
+    Retrieves all versions for each secret from Google Secret Manager or from a local file.
+
+    Args:
+        client: Secret Manager client for making requests
+        debug_mode: If True, reads data from file instead of Secret Manager
+        save_data: If True, saves retrieved data to pickle file
+
+    Returns:
+        list[list]: List of lists containing SecretVersions for each secret
+    """
+    PICKLE_VERSIONS_FILENAME = "data_secrets_versions.pkl"
+    PICKLE_VERSIONS_PATH = VAR_DIR / PICKLE_VERSIONS_FILENAME
+
+    # Create directory for data storage if it doesn't exist
+    VAR_DIR.mkdir(exist_ok=True)
+
+    secrets_versions = []
+
+    if debug_mode and PICKLE_VERSIONS_PATH.exists():
+        # Read data from pickle file in debug mode
+        with open(PICKLE_VERSIONS_PATH, "rb") as f:
+            secrets_versions = pickle.load(f)
+        return secrets_versions
+    if debug_mode and not PICKLE_VERSIONS_PATH.exists():
+        return secrets_versions
+
+    try:
+        # Get list of all secrets first
+        secrets = get_secrets(client, debug_mode=False, save_data=False)
+
+        # For each secret, get its versions
+        for secret in secrets:
+            versions = []
+            request = secretmanager.ListSecretVersionsRequest(
+                parent=secret.name,
+            )
+
+            # Use pagination to get all versions
+            page_result = client.list_secret_versions(request=request)
+            for version in page_result:
+                versions.append(version)
+
+            secrets_versions.append(versions)
+
+        if save_data:
+            # Save retrieved data to pickle file
+            with open(PICKLE_VERSIONS_PATH, "wb") as f:
+                pickle.dump(secrets_versions, f)
+
+        return secrets_versions
+
+    except Exception as e:
+        print(f"Error while retrieving secret versions: {e}")
+        return []
+
+
 def main():
     """
     Main function to demonstrate Secret Manager usage
@@ -118,6 +178,9 @@ def main():
     # Get secrets and print their count
     secrets = get_secrets(client, debug_mode=True, save_data=True)
     print(f"Retrieved secrets: {len(secrets)}")
+
+    secrets_versions = get_secrets_versions(client, debug_mode=True, save_data=True)
+    print(f"Retrieved secret versions: {sum(len(versions) for versions in secrets_versions)}")
 
 
 if __name__ == "__main__":
