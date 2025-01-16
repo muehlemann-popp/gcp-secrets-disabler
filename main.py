@@ -12,13 +12,21 @@ from google.oauth2 import service_account
 # Global configuration
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "crowdtransfer-mp")
 GCP_REGION = os.getenv("GCP_REGION", "europe-west6")
-PICKLE_FILENAME = "data_secrets.pkl"
+PICKLE_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets.pkl")
+PICKLE_VERSIONS_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets_versions.pkl")
 GCP_CREDENTIALS_PATH = os.getenv("GCP_CREDENTIALS_PATH", "./var/gcp_access_key.json")
+
+
+# Options flags
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "false"
+SAVE_DATA = os.getenv("SAVE_DATA", "true").lower() == "false"
+FILE_MODE = os.getenv("FILE_MODE", "false").lower() == "true"
 
 # Path configuration
 SCRIPT_DIR = Path(__file__).parent
 VAR_DIR = SCRIPT_DIR / "var"
 PICKLE_PATH = VAR_DIR / PICKLE_FILENAME
+PICKLE_VERSIONS_PATH = VAR_DIR / PICKLE_VERSIONS_FILENAME
 CREDENTIALS_FILE = Path(GCP_CREDENTIALS_PATH)
 
 
@@ -53,14 +61,14 @@ def get_credentials() -> service_account.Credentials:
 
 
 def get_secrets(
-    client: secretmanager.SecretManagerServiceClient, debug_mode: bool = False, save_data: bool = True
+    client: secretmanager.SecretManagerServiceClient, file_mode: bool = False, save_data: bool = True
 ) -> List[secretmanager.Secret]:
     """
     Retrieves all secrets from Google Secret Manager or from a local file.
 
     Args:
         client: Secret Manager client for making requests
-        debug_mode: If True, reads data from file instead of Secret Manager
+        file_mode: If True, reads data from file instead of Secret Manager
         save_data: If True, saves retrieved data to pickle file
 
     Returns:
@@ -71,12 +79,12 @@ def get_secrets(
 
     secrets = []
 
-    if debug_mode and PICKLE_PATH.exists():
+    if file_mode and PICKLE_PATH.exists():
         # Read data from pickle file in debug mode
         with open(PICKLE_PATH, "rb") as f:
             secrets = pickle.load(f)
         return secrets
-    if debug_mode and not PICKLE_PATH.exists():
+    if file_mode and not PICKLE_PATH.exists():
         return secrets
 
     # Form the project path
@@ -106,38 +114,35 @@ def get_secrets(
 
 
 def get_secrets_versions(
-    client: secretmanager.SecretManagerServiceClient, debug_mode: bool = False, save_data: bool = True
-) -> list[list]:
+    client: secretmanager.SecretManagerServiceClient, file_mode: bool = False, save_data: bool = True
+) -> list[list[secretmanager.SecretVersion]]:
     """
     Retrieves all versions for each secret from Google Secret Manager or from a local file.
 
     Args:
         client: Secret Manager client for making requests
-        debug_mode: If True, reads data from file instead of Secret Manager
+        file_mode: If True, reads data from file instead of Secret Manager
         save_data: If True, saves retrieved data to pickle file
 
     Returns:
         list[list]: List of lists containing SecretVersions for each secret
     """
-    PICKLE_VERSIONS_FILENAME = "data_secrets_versions.pkl"
-    PICKLE_VERSIONS_PATH = VAR_DIR / PICKLE_VERSIONS_FILENAME
-
     # Create directory for data storage if it doesn't exist
     VAR_DIR.mkdir(exist_ok=True)
 
     secrets_versions = []
 
-    if debug_mode and PICKLE_VERSIONS_PATH.exists():
+    if file_mode and PICKLE_VERSIONS_PATH.exists():
         # Read data from pickle file in debug mode
         with open(PICKLE_VERSIONS_PATH, "rb") as f:
             secrets_versions = pickle.load(f)
         return secrets_versions
-    if debug_mode and not PICKLE_VERSIONS_PATH.exists():
+    if file_mode and not PICKLE_VERSIONS_PATH.exists():
         return secrets_versions
 
     try:
         # Get list of all secrets first
-        secrets = get_secrets(client, debug_mode=False, save_data=False)
+        secrets = get_secrets(client, file_mode=False, save_data=False)
 
         # For each secret, get its versions
         for secret in secrets:
@@ -165,6 +170,51 @@ def get_secrets_versions(
         return []
 
 
+def secret_versions_disabling(
+    client: secretmanager.SecretManagerServiceClient,
+    versions: list[secretmanager.SecretVersion],
+    dry_run: bool = True,
+) -> None:
+    """
+    Disables all secret versions except the most recently created one.
+
+    Args:
+        client: Secret Manager client for making requests
+        versions: List of secret versions to process
+        dry_run: If True, only shows what would be changed without making actual changes
+    """
+    if len(versions) <= 1:
+        return
+
+    # Sort versions by creation time in descending order (newest first)
+    sorted_versions = sorted(versions, key=lambda x: x.create_time, reverse=True)
+
+    # Get the most recent version (will be kept enabled)
+    latest_version = sorted_versions[0]
+    # Get all other versions that need to be disabled
+    versions_to_disable = sorted_versions[1:]
+
+    print(f"Latest version to keep enabled: {latest_version.name}")
+    print(f"Versions to disable: {len(versions_to_disable)}")
+
+    if dry_run:
+        return
+
+    # Process each version that needs to be disabled
+    for version in versions_to_disable:
+        try:
+            # Skip versions that are not in ENABLED state
+            if version.state != secretmanager.SecretVersion.State.ENABLED:
+                print(f"Skipping version {version.name}: already in {version.state} state")
+                continue
+
+            print(f"Disabling version: {version.name}")
+            request = secretmanager.DisableSecretVersionRequest(name=version.name)
+            client.disable_secret_version(request=request)
+        except Exception as e:
+            print(f"Error disabling version {version.name}: {str(e)}")
+
+
 def main():
     """
     Main function to demonstrate Secret Manager usage
@@ -176,11 +226,14 @@ def main():
     client = secretmanager.SecretManagerServiceClient(credentials=credentials)
 
     # Get secrets and print their count
-    secrets = get_secrets(client, debug_mode=True, save_data=True)
+    secrets = get_secrets(client, file_mode=FILE_MODE, save_data=SAVE_DATA)
     print(f"Retrieved secrets: {len(secrets)}")
 
-    secrets_versions = get_secrets_versions(client, debug_mode=True, save_data=True)
+    secrets_versions = get_secrets_versions(client, file_mode=FILE_MODE, save_data=SAVE_DATA)
     print(f"Retrieved secret versions: {sum(len(versions) for versions in secrets_versions)}")
+    if secrets_versions:
+        for group in secrets_versions:
+            secret_versions_disabling(client, group, dry_run=DRY_RUN)
 
 
 if __name__ == "__main__":
