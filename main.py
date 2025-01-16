@@ -16,10 +16,9 @@ PICKLE_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets.pkl")
 PICKLE_VERSIONS_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets_versions.pkl")
 GCP_CREDENTIALS_PATH = os.getenv("GCP_CREDENTIALS_PATH", "./var/gcp_access_key.json")
 
-
 # Options flags
-DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "false"
-SAVE_DATA = os.getenv("SAVE_DATA", "true").lower() == "false"
+DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
+SAVE_DATA = os.getenv("SAVE_DATA", "true").lower() == "true"
 FILE_MODE = os.getenv("FILE_MODE", "false").lower() == "true"
 
 # Path configuration
@@ -176,7 +175,7 @@ def secret_versions_disabling(
     dry_run: bool = True,
 ) -> None:
     """
-    Disables all secret versions except the most recently created one.
+    Disables all enabled secret versions except the most recently created one.
 
     Args:
         client: Secret Manager client for making requests
@@ -191,11 +190,14 @@ def secret_versions_disabling(
 
     # Get the most recent version (will be kept enabled)
     latest_version = sorted_versions[0]
-    # Get all other versions that need to be disabled
-    versions_to_disable = sorted_versions[1:]
+
+    # Filter versions to get only enabled ones, excluding the latest version
+    versions_to_disable = [
+        version for version in sorted_versions[1:] if version.state == secretmanager.SecretVersion.State.ENABLED
+    ]
 
     print(f"Latest version to keep enabled: {latest_version.name}")
-    print(f"Versions to disable: {len(versions_to_disable)}")
+    print(f"Enabled versions to disable: {len(versions_to_disable)}")
 
     if dry_run:
         return
@@ -203,11 +205,6 @@ def secret_versions_disabling(
     # Process each version that needs to be disabled
     for version in versions_to_disable:
         try:
-            # Skip versions that are not in ENABLED state
-            if version.state != secretmanager.SecretVersion.State.ENABLED:
-                print(f"Skipping version {version.name}: already in {version.state} state")
-                continue
-
             print(f"Disabling version: {version.name}")
             request = secretmanager.DisableSecretVersionRequest(name=version.name)
             client.disable_secret_version(request=request)

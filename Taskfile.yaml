@@ -4,11 +4,11 @@ version: "3"
 
 vars:
   GITHUB_REPOSITORY_OWNER: muehlemann-popp
-  GITHUB_REPOSITORY_NAME: tempo-vacation-syncher
-  GCP_PROJECT_ID: tempo-vacation-syncher
-  GCP_SERVICE_ACCOUNT: github-ci@tempo-vacation-syncher.iam.gserviceaccount.com
-  GCP_IDENTITY_POOL_ID: github-identity-pool
-  GCP_DOCKER_IMAGE_NAME: europe-west6-docker.pkg.dev/tempo-vacation-syncher/tempo-vacation-syncher/build
+  GCP_PROJECT_ID: crowdtransfer-mp
+  GCP_SERVICE_ACCOUNT: sa-gitlab-crowdtransfer@crowdtransfer-mp.iam.gserviceaccount.com
+  DRY_RUN: true
+  SAVE_DATA: true
+  FILE_MODE: false
 
 tasks:
   default:
@@ -48,5 +48,9 @@ tasks:
       - uv run ruff format
 
   py:run:
+    env:
+      DRY_RUN: "{{ .DRY_RUN }}"
+      SAVE_DATA: "{{ .SAVE_DATA }}"
+      FILE_MODE: "{{ .FILE_MODE }}"
     desc: Run main script with uv
     cmd: uv run python ./main.py
