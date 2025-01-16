@@ -1,7 +1,7 @@
 [project]
-name = "crowdtransfer-secrets-disabling"
+name = "gcp-secrets-disabler"
 version = "0.1.0"
-description = "Add your description here"
+description = "A script for managing and cleaning up secret versions in Google Cloud Secret Manager."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
