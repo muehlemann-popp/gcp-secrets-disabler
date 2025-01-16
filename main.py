@@ -14,7 +14,8 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "crowdtransfer-mp")
 GCP_REGION = os.getenv("GCP_REGION", "europe-west6")
 PICKLE_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets.pkl")
 PICKLE_VERSIONS_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets_versions.pkl")
-GCP_CREDENTIALS_PATH = os.getenv("GCP_CREDENTIALS_PATH", "./var/gcp_access_key.json")
+# GOOGLE_GHA_CREDS_PATH variable will be set with using google-github-actions/auth@v2 action in GitHub workflow
+GCP_CREDENTIALS_PATH = os.getenv("GOOGLE_GHA_CREDS_PATH", "./var/gcp_access_key.json")
 
 # Options flags
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
