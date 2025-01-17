@@ -32,9 +32,9 @@ The script uses the following environment variables:
 
 1. Make sure you have Python 3.12+ installed
 
-2. Install uv package manager and project dependencies:
+2. Install poetry and project dependencies:
    ```bash
-   task uv:install
+   task poetry:install
    ```
 
 3. Set up your GCP project in gcloud:
@@ -75,15 +75,15 @@ To run in dry run mode:
 task py:run DRY_RUN=true
 ```
 
-### Production Mode (Destructive)
+### Production Mode (Active Changes)
 When running with `DRY_RUN=false`, the script will:
 - Actually disable older versions of secrets
-- Make permanent changes to your GCP Secret Manager
-- Cannot be undone
+- Make changes to your GCP Secret Manager
+- Changes can be reverted if needed through the Google Cloud Platform web console
 
 To run in production mode:
 ```bash
 task py:run DRY_RUN=false
 ```
 
-**⚠️ WARNING: Always run in dry run mode first to verify the changes that will be made. Disabling secret versions cannot be undone!**
+**⚠️ NOTE: Always run in dry run mode first to verify the changes that will be made. While secret version changes can be reverted through the GCP console if needed, it's best practice to verify the changes before applying them.**

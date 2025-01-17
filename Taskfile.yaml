@@ -16,20 +16,20 @@ tasks:
       - task --list-all
     silent: true
 
-  uv:install:
+  poetry:install:
     desc: Install dependencies without changes in lock file
     cmds:
-      - uv sync --frozen -v --all-groups
+      - poetry install --sync -v
 
-  uv:install:ci:
+  poetry:install:ci:
     desc: Install dependencies like in CI pipeline
     cmds:
-      - uv sync --frozen -v --no-dev
+      - poetry install --sync -v --without=dev
 
-  uv:install:update:
-    desc: Update dependencies with 'uv'
+  poetry:install:update:
+    desc: Update dependencies with 'poetry'
     cmds:
-      - uv sync --upgrade -v
+      - poetry update
 
   gcloud:project:set:
     desc: Set current project in gcloud context
@@ -44,13 +44,13 @@ tasks:
   py:format:
     desc: Format python files
     cmds:
-      - uv run ruff check --select I --fix
-      - uv run ruff format
+      - poetry run ruff check --select I --fix
+      - poetry run ruff format
 
   py:run:
     env:
       DRY_RUN: "{{ .DRY_RUN }}"
       SAVE_DATA: "{{ .SAVE_DATA }}"
       FILE_MODE: "{{ .FILE_MODE }}"
-    desc: Run main script with uv
-    cmd: uv run python ./main.py
+    desc: Run main script with poetry
+    cmd: poetry run python ./main.py
