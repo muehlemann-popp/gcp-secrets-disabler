@@ -7,15 +7,12 @@ from pathlib import Path
 from typing import List
 
 from google.cloud import secretmanager
-from google.oauth2 import service_account
 
 # Global configuration
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "crowdtransfer-mp")
 GCP_REGION = os.getenv("GCP_REGION", "europe-west6")
 PICKLE_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets.pkl")
 PICKLE_VERSIONS_FILENAME = os.getenv("PICKLE_FILENAME", "data_secrets_versions.pkl")
-# GOOGLE_GHA_CREDS_PATH variable will be set with using google-github-actions/auth@v2 action in GitHub workflow
-GCP_CREDENTIALS_PATH = os.getenv("GOOGLE_GHA_CREDS_PATH", "./var/gcp_access_key.json")
 
 # Options flags
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
@@ -27,37 +24,6 @@ SCRIPT_DIR = Path(__file__).parent
 VAR_DIR = SCRIPT_DIR / "var"
 PICKLE_PATH = VAR_DIR / PICKLE_FILENAME
 PICKLE_VERSIONS_PATH = VAR_DIR / PICKLE_VERSIONS_FILENAME
-CREDENTIALS_FILE = Path(GCP_CREDENTIALS_PATH)
-
-
-def get_credentials() -> service_account.Credentials:
-    """
-    Retrieves credentials from the service account key file.
-
-    Returns:
-        service_account.Credentials: Google Cloud credentials
-
-    Raises:
-        FileNotFoundError: If the credentials file is not found
-        ValueError: If the credentials file is invalid
-    """
-    try:
-        if not CREDENTIALS_FILE.exists():
-            raise FileNotFoundError(
-                f"Credentials file not found at: {CREDENTIALS_FILE}. "
-                "Please provide valid credentials file path in GCP_CREDENTIALS_PATH "
-                "environment variable or place the file in the default location."
-            )
-
-        credentials = service_account.Credentials.from_service_account_file(str(CREDENTIALS_FILE))
-        return credentials
-
-    except FileNotFoundError as e:
-        print(f"Error: {str(e)}")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error while loading credentials: {str(e)}")
-        sys.exit(1)
 
 
 def get_secrets(
@@ -98,8 +64,8 @@ def get_secrets(
 
         # Use pagination to get all secrets
         page_result = client.list_secrets(request=request)
-        for secret in page_result:
-            secrets.append(secret)
+        for secret_item in page_result:
+            secrets.append(secret_item)
 
         if save_data:
             # Save retrieved data to pickle file
@@ -130,25 +96,25 @@ def get_secrets_versions(
     # Create directory for data storage if it doesn't exist
     VAR_DIR.mkdir(exist_ok=True)
 
-    secrets_versions = []
+    secrets_versions_data = []
 
     if file_mode and PICKLE_VERSIONS_PATH.exists():
         # Read data from pickle file in debug mode
         with open(PICKLE_VERSIONS_PATH, "rb") as f:
-            secrets_versions = pickle.load(f)
-        return secrets_versions
+            secrets_versions_data = pickle.load(f)
+        return secrets_versions_data
     if file_mode and not PICKLE_VERSIONS_PATH.exists():
-        return secrets_versions
+        return secrets_versions_data
 
     try:
         # Get list of all secrets first
-        secrets = get_secrets(client, file_mode=False, save_data=False)
+        secrets_list = get_secrets(client, file_mode=False, save_data=False)
 
         # For each secret, get its versions
-        for secret in secrets:
+        for secret_item in secrets_list:
             versions = []
             request = secretmanager.ListSecretVersionsRequest(
-                parent=secret.name,
+                parent=secret_item.name,
             )
 
             # Use pagination to get all versions
@@ -156,14 +122,14 @@ def get_secrets_versions(
             for version in page_result:
                 versions.append(version)
 
-            secrets_versions.append(versions)
+            secrets_versions_data.append(versions)
 
         if save_data:
             # Save retrieved data to pickle file
             with open(PICKLE_VERSIONS_PATH, "wb") as f:
-                pickle.dump(secrets_versions, f)
+                pickle.dump(secrets_versions_data, f)
 
-        return secrets_versions
+        return secrets_versions_data
 
     except Exception as e:
         print(f"Error while retrieving secret versions: {e}")
@@ -184,6 +150,10 @@ def secret_versions_disabling(
         dry_run: If True, only shows what would be changed without making actual changes
     """
     if len(versions) <= 1:
+        if versions:
+            print(f"Secret {versions[0].name.split('/versions/')[0]} has {len(versions)} version(s). No action needed.")
+        else:
+            print("No versions provided to process.")
         return
 
     # Sort versions by creation time in descending order (newest first)
@@ -197,10 +167,19 @@ def secret_versions_disabling(
         version for version in sorted_versions[1:] if version.state == secretmanager.SecretVersion.State.ENABLED
     ]
 
+    secret_base_name = latest_version.name.split("/versions/")[0]
+    print(f"Processing secret: {secret_base_name}")
     print(f"Latest version to keep enabled: {latest_version.name}")
+    if not versions_to_disable:
+        print("No older enabled versions to disable.")
+        return
+
     print(f"Enabled versions to disable: {len(versions_to_disable)}")
+    for version in versions_to_disable:
+        print(f"  - {version.name}")
 
     if dry_run:
+        print("Dry run is enabled. No actual changes will be made.")
         return
 
     # Process each version that needs to be disabled
@@ -209,6 +188,7 @@ def secret_versions_disabling(
             print(f"Disabling version: {version.name}")
             request = secretmanager.DisableSecretVersionRequest(name=version.name)
             client.disable_secret_version(request=request)
+            print(f"Successfully disabled version: {version.name}")
         except Exception as e:
             print(f"Error disabling version {version.name}: {str(e)}")
 
@@ -217,21 +197,41 @@ def main():
     """
     Main function to demonstrate Secret Manager usage
     """
-    # Get credentials
-    credentials = get_credentials()
+    print(f"Starting secret versions disabling process...")
+    print(f"GCP Project ID: {GCP_PROJECT_ID}")
+    print(f"Dry run: {DRY_RUN}")
+    print(f"Save data: {SAVE_DATA}")
+    print(f"File mode: {FILE_MODE}")
 
-    # Initialize client with credentials
-    client = secretmanager.SecretManagerServiceClient(credentials=credentials)
+    try:
+        # Initialize client. It will use Application Default Credentials.
+        # google-github-actions/auth (with WIF) or GOOGLE_APPLICATION_CREDENTIALS (for local)
+        # will provide the necessary credentials.
+        client = secretmanager.SecretManagerServiceClient()
+        print("Successfully initialized SecretManagerServiceClient.")
+    except Exception as e:
+        print(f"Failed to initialize SecretManagerServiceClient: {e}")
+        sys.exit(1)
 
     # Get secrets and print their count
     secrets = get_secrets(client, file_mode=FILE_MODE, save_data=SAVE_DATA)
     print(f"Retrieved secrets: {len(secrets)}")
 
-    secrets_versions = get_secrets_versions(client, file_mode=FILE_MODE, save_data=SAVE_DATA)
-    print(f"Retrieved secret versions: {sum(len(versions) for versions in secrets_versions)}")
-    if secrets_versions:
-        for group in secrets_versions:
-            secret_versions_disabling(client, group, dry_run=DRY_RUN)
+    if not secrets:
+        print("No secrets found or retrieved. Exiting.")
+        return
+
+    secrets_versions_list = get_secrets_versions(client, file_mode=FILE_MODE, save_data=SAVE_DATA)
+    print(f"Total groups of secret versions retrieved: {len(secrets_versions_list)}")
+
+    if secrets_versions_list:
+        for group in secrets_versions_list:
+            if group:
+                secret_versions_disabling(client, group, dry_run=DRY_RUN)
+            else:
+                print("Encountered an empty group of versions.")
+    else:
+        print("No secret versions found or retrieved.")
 
 
 if __name__ == "__main__":
