@@ -4,10 +4,11 @@ version: "3"
 
 vars:
   GITHUB_REPOSITORY_OWNER: muehlemann-popp
-  GCP_PROJECT_ID: crowdtransfer-mp
-  GCP_SERVICE_ACCOUNT: sa-gitlab-crowdtransfer@crowdtransfer-mp.iam.gserviceaccount.com
+  GCP_PROJECT_ID: rolling-stock-314710
+  GCP_SERVICE_ACCOUNT: sa-gitlab-trs@rolling-stock-314710.iam.gserviceaccount.com
+  GCP_CREDENTIALS_PATH: "/home/andrey/dev/rolling-stock/gcloud_keys/rolling-stock-314710-bec4041f3e3d.json"
   DRY_RUN: true
-  SAVE_DATA: true
+  SAVE_DATA: false
   FILE_MODE: false
 
 tasks:
@@ -49,6 +50,9 @@ tasks:
 
   py:run:
     env:
+      GCP_PROJECT_ID: "{{ .GCP_PROJECT_ID }}"
+      GOOGLE_GHA_CREDS_PATH: "{{ .GCP_CREDENTIALS_PATH }}"
+      GCP_SERVICE_ACCOUNT: "{{ .GCP_SERVICE_ACCOUNT }}"
       DRY_RUN: "{{ .DRY_RUN }}"
       SAVE_DATA: "{{ .SAVE_DATA }}"
       FILE_MODE: "{{ .FILE_MODE }}"
