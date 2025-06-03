@@ -223,11 +223,10 @@ def main():
 
     secrets_versions_list = get_secrets_versions(client, file_mode=FILE_MODE, save_data=SAVE_DATA)
     print(f"Total groups of secret versions retrieved: {len(secrets_versions_list)}")
-    # print(f"Retrieved secret versions (total count): {sum(len(versions) for versions in secrets_versions_list)}") # Ошибка если secrets_versions_list пустой
 
     if secrets_versions_list:
         for group in secrets_versions_list:
-            if group:  # Убедимся, что группа версий не пуста
+            if group:
                 secret_versions_disabling(client, group, dry_run=DRY_RUN)
             else:
                 print("Encountered an empty group of versions.")
